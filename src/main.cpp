@@ -7,19 +7,28 @@
 #include "receivedata.h"
 #include "senddata.h"
 #include "savedata.h"
+#include "repositorio.h"
 
 int main(int argc, char *argv[]) {
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif
     QGuiApplication app(argc, argv);
+    app.setApplicationName("Air_Central");   // define a pasta de dados (onde fica o banco)
     app.setWindowIcon(QIcon(":/qt/qml/Central_Ar_Condicionado/qml/icon.svg"));
     QQuickStyle::setStyle("Basic");
 
     // 1. Instanciamos apenas as classes que conversam com a Interface
-    SaveData saveData;
-    ReceiveData receiveData(&saveData);
-    SendData sendData(receiveData.getSerialPort());
+    // Banco SQLite na pasta de dados do app. Na primeira execução importa
+    // codes.json e agendamentos.json da versão antiga, se estiverem na pasta.
+    Repositorio repositorio;
+    if (!repositorio.abrir()) {
+        qCritical() << "Sem banco de dados: códigos e agendamentos não serão salvos.";
+    }
+
+    SaveData saveData(&repositorio);
+    ReceiveData receiveData(&saveData, &repositorio);
+    SendData sendData(receiveData.getSerialPort(), &repositorio);
 
     // Um nó que reiniciou (sem RTC) pede a hora; a central responde na hora.
     QObject::connect(&receiveData, &ReceiveData::timeRequested,

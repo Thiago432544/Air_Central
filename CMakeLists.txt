@@ -5,7 +5,7 @@ project(Central_Ar_Condicionado VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick SerialPort)
+find_package(Qt6 REQUIRED COMPONENTS Quick SerialPort Sql)
 find_package(Qt6${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 
 qt_standard_project_setup(REQUIRES 6.5)
@@ -29,6 +29,13 @@ qt_add_qml_module(appCentral_Ar_Condicionado
         src/receivedata.h src/receivedata.cpp
         src/senddata.h src/senddata.cpp
         src/savedata.h src/savedata.cpp
+        src/repositorio.h src/repositorio.cpp
+)
+
+# Schema do banco embutido no executável (lido como :/src/schema.sql)
+qt_add_resources(appCentral_Ar_Condicionado "banco"
+    PREFIX "/"
+    FILES src/schema.sql
 )
 
 # 3. Propriedades do executável
@@ -41,7 +48,7 @@ set_target_properties(appCentral_Ar_Condicionado PROPERTIES
 
 # 4. Linkar as bibliotecas
 target_link_libraries(appCentral_Ar_Condicionado
-    PRIVATE Qt6::Quick Qt6::SerialPort
+    PRIVATE Qt6::Quick Qt6::SerialPort Qt6::Sql
     Qt${QT_VERSION_MAJOR}::Core
         Qt${QT_VERSION_MAJOR}::Gui
         Qt${QT_VERSION_MAJOR}::Qml

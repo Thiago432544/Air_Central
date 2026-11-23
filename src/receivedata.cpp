@@ -1,6 +1,7 @@
 #include "receivedata.h"
 
-ReceiveData::ReceiveData(SaveData *saveData, QObject *parent) : QObject(parent) , saveData(saveData)
+ReceiveData::ReceiveData(SaveData *saveData, Repositorio *repositorio, QObject *parent)
+    : QObject(parent), saveData(saveData), repo(repositorio)
 {
     serialPort = new QSerialPort(this);
 
@@ -82,6 +83,7 @@ void ReceiveData::decode_data(QJsonObject jsonObject)
 
         QString idEsp = jsonObject["id"].toString();
         qDebug() << "Novo ESP descoberto na rede Mesh:" << idEsp;
+        repo->registrarNo(idEsp);
 
         emit newDeviceDetected(idEsp);
     }
@@ -110,6 +112,7 @@ void ReceiveData::decode_data(QJsonObject jsonObject)
         // O nó manda "temp" como número; toString() num número devolve "".
         int temp = jsonObject["temp"].toVariant().toInt();
         qDebug() << "Atualização:" << idEsp << status << temp;
+        repo->atualizarEstadoNo(idEsp, status, temp);
 
         emit statusUpdated(idEsp, status, temp);
     }

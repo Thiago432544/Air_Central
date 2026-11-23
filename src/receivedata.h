@@ -17,7 +17,7 @@ class ReceiveData : public QObject
     Q_OBJECT
 
 public:
-    explicit ReceiveData(SaveData *saveData, QObject *parent = nullptr);
+    explicit ReceiveData(SaveData *saveData, Repositorio *repositorio, QObject *parent = nullptr);
 
     // CORREÇÃO: Função restaurada para o main.cpp conseguir acessar a porta!
     QSerialPort* getSerialPort() { return serialPort; }
@@ -44,6 +44,7 @@ private:
     QString waitedCommand = "";
 
     SaveData *saveData;
+    Repositorio *repo;
 };
 
 #endif // RECEIVEDATA_H

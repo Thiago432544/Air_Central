@@ -13,11 +13,13 @@
 #include <QTimer>
 #include <QDate>
 
+#include "repositorio.h"
+
 class SendData : public QObject
 {
     Q_OBJECT
 public:
-    explicit SendData(QSerialPort *portaSerial, QObject *parent = nullptr);
+    explicit SendData(QSerialPort *portaSerial, Repositorio *repositorio, QObject *parent = nullptr);
 
     void send_data(QJsonObject jsonCommand);
 
@@ -40,6 +42,7 @@ private slots:
 
 private:
     QSerialPort *serial;
+    Repositorio *repo;
 
     QJsonObject build_time_command() const;
 

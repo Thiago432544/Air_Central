@@ -1,7 +1,7 @@
 #include "senddata.h"
 
-SendData::SendData(QSerialPort *portaSerial, QObject *parent)
-    : QObject(parent), serial(portaSerial)
+SendData::SendData(QSerialPort *portaSerial, Repositorio *repositorio, QObject *parent)
+    : QObject(parent), serial(portaSerial), repo(repositorio)
 {
     timerFila = new QTimer(this);
     connect(timerFila, &QTimer::timeout, this, &SendData::process_data);
@@ -39,6 +39,9 @@ void SendData::require_espID_change(const QString idEsp, const QString newId)
     jsonRequest["new_id"] = newId;
 
     send_data(jsonRequest);
+
+    // A placa passa a se chamar newId; se for o nome de uma sala, fica vinculada a ela.
+    repo->renomearNo(idEsp, newId);
 }
 
 void SendData::requireEspsId()
@@ -104,83 +107,53 @@ void SendData::sinc_esp_data()
     filaDeMensagens.enqueue(build_time_command());
 
     // ---------------------------------------------------------
-    // PASSO 2: Empacotar os Códigos IR e Agendamentos
+    // PASSO 2: Códigos IR e agendamentos de cada sala, lidos do banco
     // ---------------------------------------------------------
-    QFile fileAgendamentos("agendamentos.json");
-    QFile fileCodes("codes.json");
+    // Vai para as salas com placa vinculada ou com agendamentos ativos.
+    // Cada sala recebe só os códigos do modelo dela; sala sem modelo definido
+    // recebe os do último modelo cadastrado (como era antes do banco).
+    const QList<Sala> salas = repo->salas();
+    for (const Sala &sala : salas) {
+        QString placa = repo->placaDaSala(sala.id);
+        if (placa.isEmpty() && !repo->salaTemAgendamentos(sala.id)) continue;
 
-    if (fileAgendamentos.open(QIODevice::ReadOnly) && fileCodes.open(QIODevice::ReadOnly)) {
+        QString idEsp = placa.isEmpty() ? sala.nome : placa;
+        QJsonObject config = repo->configDaSala(sala.id);
 
-        QJsonObject rootAgendamentos = QJsonDocument::fromJson(fileAgendamentos.readAll()).object();
-        QJsonObject objCodes = QJsonDocument::fromJson(fileCodes.readAll()).object();
-
-        fileAgendamentos.close();
-        fileCodes.close();
-
-        for (auto it = rootAgendamentos.begin(); it != rootAgendamentos.end(); ++it) {
-            QString idEsp = it.key();
-            QJsonArray rotinas = it.value().toArray();
-
-            // Manda a ESP limpar a memória antes de receber os dados novos
-            QJsonObject cmdClear;
-            cmdClear["command"] = "Clear_Memory";
-            cmdClear["id"] = idEsp;
-            filaDeMensagens.enqueue(cmdClear);
-
-            // =========================================================
-            // NOVA LÓGICA: Envia TODOS os códigos disponíveis no sistema
-            // para a Flash do ESP, garantindo o funcionamento manual.
-            // =========================================================
-            for (auto itCode = objCodes.begin(); itCode != objCodes.end(); ++itCode) {
-                QString nomeCodigo = itCode.key();
-                QJsonArray rawArray = itCode.value().toArray();
-
-                if (!rawArray.isEmpty()) {
-                    QJsonObject cmdCode;
-                    cmdCode["command"] = "Add_Code";
-                    cmdCode["id"] = idEsp;
-                    cmdCode["name"] = nomeCodigo;
-
-                    // Pega o último código gravado
-                    cmdCode["raw"] = rawArray.last().toString();
-
-                    filaDeMensagens.enqueue(cmdCode);
-                }
-            }
-
-            // =========================================================
-            // Envia apenas os horários dos agendamentos
-            // =========================================================
-            for (int i = 0; i < rotinas.size(); ++i) {
-                QJsonObject rotina = rotinas[i].toObject();
-
-                QString acao = rotina["acao"].toString();
-                QString temp = rotina["temp"].toString();
-                QString nomeCodigo = (acao == "Ligar" && temp != "--") ? temp : acao;
-
-                QString diaStr = rotina["dia"].toString();
-                int diaNumero = 0;
-
-                if (diaStr == "Dom") diaNumero = 0;
-                else if (diaStr == "Seg") diaNumero = 1;
-                else if (diaStr == "Ter") diaNumero = 2;
-                else if (diaStr == "Qua") diaNumero = 3;
-                else if (diaStr == "Qui") diaNumero = 4;
-                else if (diaStr == "Sex") diaNumero = 5;
-                else if (diaStr == "Sab") diaNumero = 6;
-
-                QJsonObject cmdSchedule;
-                cmdSchedule["command"] = "Add_Schedule";
-                cmdSchedule["id"] = idEsp;
-                cmdSchedule["dia"] = diaNumero;
-                cmdSchedule["hora"] = rotina["hora"].toString();
-                cmdSchedule["code"] = nomeCodigo;
-
-                filaDeMensagens.enqueue(cmdSchedule);
-            }
+        if (sala.modeloId < 0) {
+            qDebug() << "Sala" << sala.nome << "sem modelo definido: usando os códigos do último modelo.";
         }
-    } else {
-        qDebug() << "Aviso: Não foi possível ler agendamentos.json ou codes.json";
+
+        // Manda a ESP limpar a memória antes de receber os dados novos
+        QJsonObject cmdClear;
+        cmdClear["command"] = "Clear_Memory";
+        cmdClear["id"] = idEsp;
+        filaDeMensagens.enqueue(cmdClear);
+
+        // O firmware ainda usa os nomes antigos ("Ligar", "22") como nome de arquivo.
+        const QJsonObject codigos = config["codigos"].toObject();
+        for (auto it = codigos.begin(); it != codigos.end(); ++it) {
+            QJsonObject cmdCode;
+            cmdCode["command"] = "Add_Code";
+            cmdCode["id"]      = idEsp;
+            cmdCode["name"]    = Repositorio::comandoFirmware(it.key());
+            cmdCode["raw"]     = it.value().toString();
+            filaDeMensagens.enqueue(cmdCode);
+        }
+
+        // agenda: [ [dia, "HH:MM", "COMANDO"], ... ]
+        const QJsonArray agenda = config["agenda"].toArray();
+        for (const QJsonValue &valor : agenda) {
+            QJsonArray regra = valor.toArray();
+
+            QJsonObject cmdSchedule;
+            cmdSchedule["command"] = "Add_Schedule";
+            cmdSchedule["id"]      = idEsp;
+            cmdSchedule["dia"]     = regra[0].toInt();
+            cmdSchedule["hora"]    = regra[1].toString();
+            cmdSchedule["code"]    = Repositorio::comandoFirmware(regra[2].toString());
+            filaDeMensagens.enqueue(cmdSchedule);
+        }
     }
 
     // ---------------------------------------------------------
