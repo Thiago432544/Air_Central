@@ -153,35 +153,21 @@ void SendData::sinc_esp_data()
             qDebug() << "Sala" << sala.nome << "sem modelo definido: usando os códigos do último modelo.";
         }
 
-        // Manda a ESP limpar a memória antes de receber os dados novos
-        QJsonObject cmdClear;
-        cmdClear["command"] = "Clear_Memory";
-        cmdClear["id"] = idEsp;
-        filaDeMensagens.enqueue(cmdClear);
-
-        // O firmware ainda usa os nomes antigos ("Ligar", "22") como nome de arquivo.
+        // Agenda que usa um código que o modelo não tem: o nó não vai achar o
+        // arquivo na hora de disparar.
         const QJsonObject codigos = config["codigos"].toObject();
-        for (auto it = codigos.begin(); it != codigos.end(); ++it) {
-            QJsonObject cmdCode;
-            cmdCode["command"] = "Add_Code";
-            cmdCode["id"]      = idEsp;
-            cmdCode["name"]    = Repositorio::comandoFirmware(it.key());
-            cmdCode["raw"]     = it.value().toString();
-            filaDeMensagens.enqueue(cmdCode);
+        for (const QJsonValue &valor : config["agenda"].toArray()) {
+            QString comando = valor.toArray().at(2).toString();
+            if (!codigos.contains(comando)) {
+                qWarning() << "Sala" << sala.nome << ": a agenda usa" << comando
+                           << "mas o modelo não tem esse código.";
+            }
         }
 
-        // agenda: [ [dia, "HH:MM", "COMANDO"], ... ]
-        const QJsonArray agenda = config["agenda"].toArray();
-        for (const QJsonValue &valor : agenda) {
-            QJsonArray regra = valor.toArray();
-
-            QJsonObject cmdSchedule;
-            cmdSchedule["command"] = "Add_Schedule";
-            cmdSchedule["id"]      = idEsp;
-            cmdSchedule["dia"]     = regra[0].toInt();
-            cmdSchedule["hora"]    = regra[1].toString();
-            cmdSchedule["code"]    = Repositorio::comandoFirmware(regra[2].toString());
-            filaDeMensagens.enqueue(cmdSchedule);
+        // A config inteira vai como uma transação: o nó só troca a config
+        // atual quando chegar o Config_Fim com todas as partes.
+        for (const QJsonObject &mensagem : montarTransacaoConfig(idEsp, config)) {
+            filaDeMensagens.enqueue(mensagem);
         }
     }
 
@@ -198,6 +184,72 @@ void SendData::sinc_esp_data()
     } else {
         emit syncFinished();
     }
+}
+
+QList<QJsonObject> SendData::montarTransacaoConfig(const QString &idEsp, const QJsonObject &config)
+{
+    // Até 40 agendamentos por Config_Agenda: cada item tem uns 20 bytes, então
+    // a parte fica bem abaixo da linha de 4.096 bytes da ponte.
+    const int ITENS_POR_PARTE = 40;
+
+    const QString hash = config["hash"].toString();
+    const QJsonObject codigos = config["codigos"].toObject();
+    const QJsonArray agenda = config["agenda"].toArray();
+    const int partesAgenda = (agenda.size() + ITENS_POR_PARTE - 1) / ITENS_POR_PARTE;
+
+    QList<QJsonObject> mensagens;
+
+    QJsonObject inicio;
+    inicio["command"] = "Config_Inicio";
+    inicio["id"]      = idEsp;
+    inicio["hash"]    = hash;
+    inicio["codigos"] = codigos.size();
+    inicio["agendas"] = partesAgenda;
+    mensagens.append(inicio);
+
+    // O firmware ainda usa os nomes antigos ("Ligar", "22") como nome de arquivo.
+    for (auto it = codigos.begin(); it != codigos.end(); ++it) {
+        QJsonObject codigo;
+        codigo["command"] = "Config_Codigo";
+        codigo["id"]      = idEsp;
+        codigo["hash"]    = hash;
+        codigo["nome"]    = Repositorio::comandoFirmware(it.key());
+        codigo["dados"]   = it.value().toString();
+
+        // A ponte corta linhas maiores que 4.096 bytes; o nó descartaria a
+        // parte e a transação ficaria incompleta.
+        int tamanho = QJsonDocument(codigo).toJson(QJsonDocument::Compact).size() + 1;
+        if (tamanho > 4096) {
+            qWarning() << "Código" << it.key() << "de" << idEsp << "tem" << tamanho
+                       << "bytes e não cabe na linha da ponte (4096).";
+        }
+        mensagens.append(codigo);
+    }
+
+    // agenda: [ [dia, "HH:MM", "COMANDO"], ... ], com o comando no nome do firmware
+    for (int parte = 0; parte < partesAgenda; ++parte) {
+        QJsonArray itens;
+        for (int i = parte * ITENS_POR_PARTE; i < qMin(agenda.size(), (parte + 1) * ITENS_POR_PARTE); ++i) {
+            QJsonArray regra = agenda.at(i).toArray();
+            itens.append(QJsonArray{regra.at(0).toInt(), regra.at(1).toString(),
+                                    Repositorio::comandoFirmware(regra.at(2).toString())});
+        }
+        QJsonObject pedaco;
+        pedaco["command"] = "Config_Agenda";
+        pedaco["id"]      = idEsp;
+        pedaco["hash"]    = hash;
+        pedaco["parte"]   = parte + 1;
+        pedaco["itens"]   = itens;
+        mensagens.append(pedaco);
+    }
+
+    QJsonObject fim;
+    fim["command"] = "Config_Fim";
+    fim["id"]      = idEsp;
+    fim["hash"]    = hash;
+    mensagens.append(fim);
+
+    return mensagens;
 }
 
 void SendData::process_data()

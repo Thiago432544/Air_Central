@@ -28,6 +28,11 @@ public:
     void send_reliable(QJsonObject jsonCommand);
 
     Q_INVOKABLE void sinc_esp_data();
+
+    // Config completa de uma sala como transação (pendência 5):
+    // Config_Inicio, um Config_Codigo por código, Config_Agenda (em partes)
+    // e Config_Fim. "config" é o que Repositorio::configDaSala devolve.
+    static QList<QJsonObject> montarTransacaoConfig(const QString &idEsp, const QJsonObject &config);
     Q_INVOKABLE void send_time();
     Q_INVOKABLE void send_command_status(QString idEsp, QString status);
     Q_INVOKABLE void send_command_temp(QString idEsp, QString temperatura);
