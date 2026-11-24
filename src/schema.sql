@@ -31,10 +31,12 @@ CREATE TABLE salas (
 
 -- Placa ESP. chip_id é o ID que a placa informa (CI-<chipId> ou o nome
 -- dado pelo Change_ID). Uma placa atende no máximo uma sala.
+-- hash_config: hash da última config que a placa confirmou ter (8 hex do
+-- SHA-1 de {codigos, agenda}, o mesmo de configDaSala). NULL = desconhecido.
 CREATE TABLE nos (
     chip_id        TEXT    PRIMARY KEY,
     sala_id        INTEGER UNIQUE REFERENCES salas(id) ON DELETE SET NULL,
-    versao_config  INTEGER NOT NULL DEFAULT 0,
+    hash_config    TEXT,
     ultimo_contato TEXT,
     estado         TEXT    NOT NULL DEFAULT 'Desconhecido',
     temp           INTEGER
