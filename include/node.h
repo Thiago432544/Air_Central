@@ -10,6 +10,7 @@
 #include <vector>
 #include <LittleFS.h>
 #include <New>
+#include "transacao_config.h"
 
 // ==========================================
 // Configurações da Rede Mesh
@@ -40,6 +41,7 @@ void dispararStringRaw(const char* rawStr);
 void pedirHoraSeNecessario();
 void carregarAgendamentos();
 void responderAck(uint32_t para, long seq);
+void tratarConfig(const String &command, JsonDocument &docBasico, String &msg);
 
 // ==========================================
 // Variáveis

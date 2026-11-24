@@ -48,6 +48,28 @@ Na resposta da `Topologia`, `t` é o `millis()` da ponte, `nos` é quantos nós
 ela enxerga na malha (sem contar ela mesma) e `arvore` é o
 `mesh.subConnectionJson()` da painlessMesh.
 
+## Config completa da sala (`Config_*`)
+
+Substitui o trio `Clear_Memory` + `Add_Code` + `Add_Schedule` na sincronização.
+A central manda, para cada sala (todas com o `id` da sala e o mesmo `hash`):
+
+| Mensagem | Exemplo |
+| -------- | ------- |
+| `Config_Inicio` | `{"command":"Config_Inicio","id":"LAB-01","hash":"3f2a9c1b","codigos":17,"agendas":1}` |
+| `Config_Codigo` | `{"command":"Config_Codigo","id":"LAB-01","hash":"3f2a9c1b","nome":"22","dados":"9000,4500,..."}` |
+| `Config_Agenda` | `{"command":"Config_Agenda","id":"LAB-01","hash":"3f2a9c1b","parte":1,"itens":[[1,"07:00","22"]]}` |
+| `Config_Fim` | `{"command":"Config_Fim","id":"LAB-01","hash":"3f2a9c1b"}` |
+
+O nó grava tudo como rascunho e só troca pela config atual no `Config_Fim`,
+se chegou tudo o que o `Config_Inicio` anunciou. Se faltou algo, descarta o
+rascunho e mantém a config antiga inteira. O `hash` fica gravado na placa
+(`/_config.hash`). Mensagens repetidas não estragam nada. A lógica está em
+`include/transacao_config.h`, com teste no PC em `test/host/`.
+
+Esta parte não confirma nada para a central: confirmação e reenvio de cada
+mensagem são da tarefa 2, e a central descobre quem está desatualizado pelo
+hash (heartbeat, mais adiante).
+
 ## Eventos da ponte
 
 A ponte imprime sozinha, sem ninguém pedir, uma linha para cada mudança na
