@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>    
 #include <IRrecv.h>         
 #include <IRutils.h>
+#include <map>
 
 // ==========================================
 // Configurações da Rede Mesh
@@ -32,5 +33,7 @@
 void mensagemRecebidaDaMesh(uint32_t from, String &msg);
 void mensagemRecebidaDoQt();
 void checarReceptorIR();
+void encaminharParaMalha(const String &mensagem, const String &destino);
+void imprimirTopologia();
 
 #endif // BRIDGE_H

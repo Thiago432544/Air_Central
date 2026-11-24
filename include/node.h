@@ -39,6 +39,7 @@ void dispararCodigoSalvo(String nomeCodigo);
 void dispararStringRaw(const char* rawStr);
 void pedirHoraSeNecessario();
 void carregarAgendamentos();
+void responderAck(uint32_t para, long seq);
 
 // ==========================================
 // Variáveis

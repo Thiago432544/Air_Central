@@ -11,6 +11,10 @@ String myID;
 bool powerStatus = false;
 int temperaturaAtual = 25;
 int temperaturaAlvo = 25;
+
+// Entrega confiável (tarefa 2): "seq" do último Dispatch executado, para não
+// disparar o IR de novo quando a central reenviar a mesma mensagem.
+long ultimoSeqExecutado = -1;
 Task tarefaChecagem(5000, TASK_FOREVER, &checarAgendamentos);
 Task tarefaPedirHora(30000, TASK_FOREVER, &pedirHoraSeNecessario);
 
@@ -83,6 +87,7 @@ void mensagensRecebidas(uint32_t nodeId_de_quem_enviou, String &msg) {
   filter["dia"]       = true;
   filter["hora"]      = true;
   filter["code"]      = true;
+  filter["seq"]       = true;
 
   JsonDocument docBasico;
   deserializeJson(docBasico, msg, DeserializationOption::Filter(filter));
@@ -207,6 +212,11 @@ void mensagensRecebidas(uint32_t nodeId_de_quem_enviou, String &msg) {
 
   // --- TRATAMENTO: DISPARO MANUAL ---
   if (command == "Dispatch" && docBasico["id"] == myID) {
+      // TODO(tarefa 2): se a mensagem tiver "seq" e ele for igual a
+      // ultimoSeqExecutado, é um reenvio de algo que já foi executado (o Ack
+      // se perdeu). Nesse caso não disparar o IR de novo: só responder o Ack
+      // outra vez e sair do bloco.
+
       JsonDocument docRaw;
       deserializeJson(docRaw, msg);
 
@@ -227,7 +237,28 @@ void mensagensRecebidas(uint32_t nodeId_de_quem_enviou, String &msg) {
       if (docRaw.containsKey("temp")) temperaturaAlvo = docRaw["temp"].as<int>();
       
       enviarStatusCentral(); 
+
+      // TODO(tarefa 2): confirmar a execução com
+      // responderAck(nodeId_de_quem_enviou, seq) e guardar o seq em
+      // ultimoSeqExecutado. Mensagens sem "seq" (formato antigo) não têm Ack.
   }
+
+  // --- TRATAMENTO: PING (medição da malha) ---
+  if (command == "Ping" && docBasico["id"] == myID) {
+      // TODO(tarefa 3): responder {"command":"Pong","de":myID,"seq":<mesmo seq>}
+      // com mesh.sendSingle(nodeId_de_quem_enviou, ...), sem fazer mais nada,
+      // para que o tempo medido seja só o da rede.
+  }
+}
+
+// =======================================================================
+// Confirmação de entrega (tarefa 2)
+// =======================================================================
+// Deve mandar {"command":"Ack","de":myID,"seq":seq} só para "para" (a ponte).
+void responderAck(uint32_t para, long seq) {
+  // TODO(tarefa 2): montar o JSON acima e enviar com mesh.sendSingle(para, ...).
+  (void) para;
+  (void) seq;
 }
 
 void dispararStringRaw(const char* rawStr) { 
