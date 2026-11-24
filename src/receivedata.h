@@ -33,6 +33,9 @@ signals:
     void newDeviceDetected(QString idEsp);
     void statusUpdated(QString idEsp, QString status, int temp);
     void timeRequested();
+    // Mensagens novas do formato v1 (docs/REDE.md na branch rede/base-firmware)
+    void ackReceived(QString de, int seq);
+    void pongReceived(QString de, int seq);
 
 private slots:
     void read_data();

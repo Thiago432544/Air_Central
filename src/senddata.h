@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QTimer>
 #include <QDate>
+#include <QHash>
 
 class SendData : public QObject
 {
@@ -21,6 +22,9 @@ public:
 
     void send_data(QJsonObject jsonCommand);
 
+    // Envio com confirmação (tarefa 2): numera a mensagem com "seq" e a envia.
+    void send_reliable(QJsonObject jsonCommand);
+
     Q_INVOKABLE void sinc_esp_data();
     Q_INVOKABLE void send_time();
     Q_INVOKABLE void send_command_status(QString idEsp, QString status);
@@ -29,8 +33,14 @@ public:
     Q_INVOKABLE void require_ir_read();
     Q_INVOKABLE void require_espID_change(const QString idEsp, const QString newId);
 
+public slots:
+    // Chamado quando chega {"command":"Ack","de":...,"seq":...} de um nó.
+    void on_ack(QString de, int seq);
+
 signals:
     void errorOccurred(QString errorMessage);
+    // Emitido quando uma mensagem confiável esgota as tentativas sem Ack.
+    void deliveryFailed(QString idEsp, QString command);
     void syncStarted(int totalPacotes);
     void syncProgress(int pacotesRestantes);
     void syncFinished();
@@ -46,6 +56,10 @@ private:
     QTimer *timerFila;
     qint64 ultimoEnvioHora = 0;
     QQueue<QJsonObject> filaDeMensagens;
+
+    // Entrega confiável (tarefa 2)
+    int proximoSeq = 1;
+    QHash<int, QJsonObject> pendentes; // seq -> mensagem ainda sem Ack
 };
 
 #endif // SENDDATA_H
