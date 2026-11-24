@@ -34,6 +34,10 @@ int main(int argc, char *argv[]) {
     QObject::connect(&receiveData, &ReceiveData::timeRequested,
                      &sendData, &SendData::send_time);
 
+    // Entrega confiável (tarefa 2): o Ack de um nó confirma um envio pendente.
+    QObject::connect(&receiveData, &ReceiveData::ackReceived,
+                     &sendData, &SendData::on_ack);
+
     QQmlApplicationEngine engine;
 
     // 2. Expondo as instâncias para o QML

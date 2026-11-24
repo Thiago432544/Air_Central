@@ -16,7 +16,7 @@ void SendData::send_command_status(QString idEsp, QString status)
 
     cmd["name"]    = (status == "Ligado") ? "Ligar" : "Desligar";
 
-    send_data(cmd);
+    send_reliable(cmd);
 }
 
 void SendData::send_command_temp(QString idEsp, QString temperatura)
@@ -24,11 +24,13 @@ void SendData::send_command_temp(QString idEsp, QString temperatura)
     QJsonObject cmd;
     cmd["command"] = "Dispatch";
     cmd["id"]      = idEsp;
-    cmd["temp"]    = temperatura;
+    // Número, não texto: o nó lê "temp" com as<int>(), que devolve 0 para texto.
+    cmd["temp"]    = temperatura.toInt();
 
+    // O nome continua texto: é o nome do arquivo do código na flash ("22").
     cmd["name"]    = temperatura;
 
-    send_data(cmd);
+    send_reliable(cmd);
 }
 
 void SendData::require_espID_change(const QString idEsp, const QString newId)
@@ -95,6 +97,33 @@ void SendData::send_data(QJsonObject jsonCommand)
         qDebug() << "Erro: Tentando enviar";
         emit errorOccurred("Falha ao enviar: A porta serial não está conectada ou aberta.");
     }
+}
+
+// =======================================================================
+// Entrega confiável (tarefa 2)
+// =======================================================================
+// Hoje só numera e envia: a mensagem sai com "seq" e o nó devolve o mesmo
+// seq no Ack. Ainda não há espera, reenvio nem desistência.
+void SendData::send_reliable(QJsonObject jsonCommand)
+{
+    int seq = proximoSeq++;
+    jsonCommand["seq"] = seq;
+
+    // TODO(tarefa 2): guardar a mensagem em pendentes[seq] e armar um timeout
+    // (ex.: QTimer de 2 s por mensagem, ou um timer único que varre
+    // pendentes). Se o Ack não chegar a tempo, reenviar a MESMA mensagem, com
+    // o MESMO seq (é assim que o nó reconhece a duplicata). Depois de N
+    // tentativas, tirar de pendentes e emitir
+    // deliveryFailed(id, command).
+    send_data(jsonCommand);
+}
+
+void SendData::on_ack(QString de, int seq)
+{
+    // TODO(tarefa 2): se seq estiver em pendentes, a entrega foi confirmada:
+    // remover de pendentes e parar o timeout dela. Um Ack de seq que não
+    // está em pendentes (atrasado ou repetido) só é ignorado.
+    qDebug() << "Ack recebido de" << de << "seq" << seq;
 }
 
 void SendData::sinc_esp_data()

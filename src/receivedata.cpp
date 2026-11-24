@@ -77,6 +77,12 @@ void ReceiveData::read_data()
 
 void ReceiveData::decode_data(QJsonObject jsonObject)
 {
+    // Linhas de log da ponte e dos nós, ex.: {"log":"nova_conexao","t":...,"no":...}
+    if (jsonObject.contains("log")) {
+        qDebug() << "Log da malha:" << QJsonDocument(jsonObject).toJson(QJsonDocument::Compact);
+        return;
+    }
+
     QString messageType = jsonObject["command"].toString();
 
     if (messageType == "Resposta_ID") {
@@ -138,6 +144,24 @@ void ReceiveData::decode_data(QJsonObject jsonObject)
     else if (messageType == "Need_Time") {
         qDebug() << "ESP sem hora válida pediu sincronização:" << jsonObject["id"].toString();
         emit timeRequested();
+    }
+
+    // --- Mensagens novas (rede) ---
+    else if (messageType == "Ack") {
+        QString de = jsonObject["de"].toString();
+        int seq = jsonObject["seq"].toInt(-1);
+        emit ackReceived(de, seq);
+    }
+
+    else if (messageType == "Pong") {
+        QString de = jsonObject["de"].toString();
+        int seq = jsonObject["seq"].toInt(-1);
+        qDebug() << "Pong de" << de << "seq" << seq;
+        emit pongReceived(de, seq);
+    }
+
+    else if (messageType == "Topologia") {
+        qDebug() << "Topologia da malha:" << QJsonDocument(jsonObject).toJson(QJsonDocument::Compact);
     }
 }
 

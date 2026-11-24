@@ -42,6 +42,9 @@ signals:
     // Um código IR foi gravado pela captura da tela de modelos.
     void codigoCapturado(int modeloId, QString comando);
     void capturaFalhou(QString motivo);
+    // Mensagens novas do formato v1 (docs/REDE.md na branch rede/base-firmware)
+    void ackReceived(QString de, int seq);
+    void pongReceived(QString de, int seq);
 
 private slots:
     void read_data();
