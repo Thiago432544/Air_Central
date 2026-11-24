@@ -25,6 +25,16 @@ Item {
         }
     }
 
+    // Sobe a cada mudança em modelos/salas no banco, para os cartões
+    // recalcularem o texto "Modelo: ...".
+    property int revisaoModelos: 0
+
+    Connections {
+        target: (typeof repositorio !== "undefined") ? repositorio : null
+        ignoreUnknownSignals: true
+        function onModelosAlterados() { telaListaPrincipal.revisaoModelos++ }
+    }
+
     Timer {
         id: refreshTimer
         interval: 1500
@@ -149,7 +159,22 @@ Item {
             enter: Transition { NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 200 } }
             exit: Transition { NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; duration: 150 } }
 
+            // Lista do combo "Modelo do ar": "(sem modelo)" + os modelos do banco.
+            function carregarModelos() {
+                var opcoes = [{ "id": -1, "nome": "(sem modelo)" }]
+                var atual = -1
+                if (typeof repositorio !== "undefined") {
+                    var lista = repositorio.listarModelos()
+                    for (var i = 0; i < lista.length; i++)
+                        opcoes.push({ "id": lista[i].id, "nome": lista[i].nome })
+                    atual = repositorio.modeloDoDispositivo(espName).id
+                }
+                comboModeloSala.model = opcoes
+                comboModeloSala.currentIndex = Math.max(0, comboModeloSala.indexOfValue(atual))
+            }
+
             onOpened: {
+                carregarModelos()
                 historicoPopup.clear()
                 if(espName !== "") {
                     var jsonString = "[]"
@@ -191,6 +216,24 @@ Item {
                         text: popupAgendamento.espName
                         font.pixelSize: 13; color: "#64748b"
                         Layout.alignment: Qt.AlignHCenter
+                    }
+                }
+
+                // Modelo do ar desta sala: define quais códigos IR ela recebe na sincronização.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Text { text: "Modelo do ar"; font.pixelSize: 12; font.bold: true; color: "#64748b" }
+                    ComboBox {
+                        id: comboModeloSala
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 36
+                        textRole: "nome"
+                        valueRole: "id"
+                        onActivated: {
+                            if (typeof repositorio !== "undefined")
+                                repositorio.definirModeloDoDispositivo(popupAgendamento.espName, currentValue)
+                        }
                     }
                 }
 
@@ -518,7 +561,16 @@ Item {
                 Column {
                     Layout.fillWidth: true
                     spacing: 4
-                    Text { text: "Dispositivo ESP32 Mesh"; font.pixelSize: 10; color: "#94a3b8"; font.bold: true }
+                    Text {
+                        // Modelo do ar da sala (escolhido no popup de automações).
+                        property var modeloSala: {
+                            telaListaPrincipal.revisaoModelos
+                            return (typeof repositorio !== "undefined") ? repositorio.modeloDoDispositivo(model.name) : { "id": -1, "nome": "" }
+                        }
+                        text: modeloSala.id < 0 ? "⚠️ Sem modelo de ar" : "Modelo: " + modeloSala.nome
+                        font.pixelSize: 10; font.bold: true
+                        color: modeloSala.id < 0 ? "#d97706" : "#94a3b8"
+                    }
                     RowLayout {
                         spacing: 8
                         width: parent.width

@@ -89,6 +89,24 @@ void ReceiveData::decode_data(QJsonObject jsonObject)
     }
 
     else if (messageType == "new_code") {
+        // Captura pedida pela tela de modelos: grava no modelo escolhido.
+        if (modeloEsperado >= 0) {
+            QString code = jsonObject["code"].toString();
+            int modelo = modeloEsperado;
+            QString comando = comandoEsperado;
+            modeloEsperado = -1;
+            comandoEsperado.clear();
+
+            if (code.isEmpty() || !repo->salvarCodigo(modelo, comando, code)) {
+                qDebug() << "Falha ao gravar o código IR de" << comando << "no modelo" << modelo;
+                emit capturaFalhou("Não foi possível gravar o código.");
+                return;
+            }
+            qDebug() << "Código de" << comando << "gravado no modelo" << modelo;
+            emit codigoCapturado(modelo, comando);
+            return;
+        }
+
         if (waitedCommand.isEmpty()) {
             qDebug() << "Recebi um código IR, mas não estou em modo de cadastro. Ignorando.";
             return;
@@ -123,8 +141,24 @@ void ReceiveData::decode_data(QJsonObject jsonObject)
     }
 }
 
+void ReceiveData::set_waited_capture(int modeloId, QString comando)
+{
+    waitedCommand.clear();
+    modeloEsperado = modeloId;
+    comandoEsperado = comando;
+    qDebug() << "ReceiveData aguardando código de" << comando << "para o modelo" << modeloId;
+}
+
+void ReceiveData::cancel_waited_capture()
+{
+    modeloEsperado = -1;
+    comandoEsperado.clear();
+}
+
 void ReceiveData::set_waited_command(QString commandType)
 {
+    modeloEsperado = -1;
+    comandoEsperado.clear();
     waitedCommand = commandType;
     qDebug() << "ReceiveData agora está aguardando um código para:" << waitedCommand;
 }

@@ -40,6 +40,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("receiveData", &receiveData);
     engine.rootContext()->setContextProperty("sendData", &sendData);
     engine.rootContext()->setContextProperty("saveData", &saveData);
+    engine.rootContext()->setContextProperty("repositorio", &repositorio);
 
     // Carrega o arquivo QML (Padrão Qt 6)
     engine.loadFromModule("Central_Ar_Condicionado", "Main");

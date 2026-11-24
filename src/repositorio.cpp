@@ -234,12 +234,18 @@ QList<Modelo> Repositorio::modelos() const
 
 int Repositorio::criarModelo(const QString &nome, const QString &marca)
 {
+    // Checa antes para não depender do erro do UNIQUE (que sujaria o log).
+    if (nome.trimmed().isEmpty() || modeloPorNome(nome, false) >= 0) return -1;
+
     QSqlQuery q(db);
     q.prepare("INSERT INTO modelos (nome, marca) VALUES (?, ?)");
     q.addBindValue(nome.trimmed());
     q.addBindValue(marca.trimmed());
     if (!rodar(q)) return -1;
-    return q.lastInsertId().toInt();
+
+    int id = q.lastInsertId().toInt();
+    emit modelosAlterados();
+    return id;
 }
 
 int Repositorio::modeloPorNome(const QString &nome, bool criar)
@@ -253,12 +259,19 @@ int Repositorio::modeloPorNome(const QString &nome, bool criar)
 
 bool Repositorio::renomearModelo(int modeloId, const QString &nome, const QString &marca)
 {
+    if (nome.trimmed().isEmpty()) return false;
+    int mesmoNome = modeloPorNome(nome, false);
+    if (mesmoNome >= 0 && mesmoNome != modeloId) return false;   // nome de outro modelo
+
     QSqlQuery q(db);
     q.prepare("UPDATE modelos SET nome = ?, marca = ? WHERE id = ?");
     q.addBindValue(nome.trimmed());
     q.addBindValue(marca.trimmed());
     q.addBindValue(modeloId);
-    return rodar(q) && q.numRowsAffected() > 0;
+    if (!rodar(q) || q.numRowsAffected() == 0) return false;
+
+    emit modelosAlterados();
+    return true;
 }
 
 bool Repositorio::apagarModelo(int modeloId)
@@ -267,7 +280,50 @@ bool Repositorio::apagarModelo(int modeloId)
     QSqlQuery q(db);
     q.prepare("DELETE FROM modelos WHERE id = ?");
     q.addBindValue(modeloId);
-    return rodar(q) && q.numRowsAffected() > 0;
+    if (!rodar(q) || q.numRowsAffected() == 0) return false;
+
+    emit modelosAlterados();
+    return true;
+}
+
+QStringList Repositorio::comandosValidos()
+{
+    QStringList lista = {"LIGAR", "DESLIGAR"};
+    for (int t = 16; t <= 30; ++t) lista << QString("T%1").arg(t);
+    return lista;
+}
+
+QVariantList Repositorio::listarModelos() const
+{
+    QVariantList lista;
+    QSqlQuery q(db);
+    q.prepare("SELECT m.id, m.nome, m.marca, m.formato, "
+              "  (SELECT COUNT(*) FROM codigos c WHERE c.modelo_id = m.id), "
+              "  (SELECT COUNT(*) FROM salas s WHERE s.modelo_id = m.id) "
+              "FROM modelos m ORDER BY m.id");
+    if (!rodar(q)) return lista;
+
+    while (q.next()) {
+        QVariantMap m;
+        m["id"]      = q.value(0).toInt();
+        m["nome"]    = q.value(1).toString();
+        m["marca"]   = q.value(2).toString();
+        m["formato"] = q.value(3).toString();
+        m["codigos"] = q.value(4).toInt();
+        m["salas"]   = q.value(5).toInt();
+        lista.append(m);
+    }
+    return lista;
+}
+
+QVariantMap Repositorio::comandosDoModelo(int modeloId) const
+{
+    const QMap<QString, QString> codigos = codigosDoModelo(modeloId);
+    QVariantMap mapa;
+    for (const QString &comando : comandosValidos()) {
+        mapa[comando] = codigos.contains(comando);
+    }
+    return mapa;
 }
 
 // =======================================================================
@@ -282,7 +338,10 @@ bool Repositorio::salvarCodigo(int modeloId, const QString &comando, const QStri
     q.addBindValue(modeloId);
     q.addBindValue(comando);
     q.addBindValue(dados);
-    return rodar(q);
+    if (!rodar(q)) return false;
+
+    emit modelosAlterados();
+    return true;
 }
 
 bool Repositorio::apagarCodigo(int modeloId, const QString &comando)
@@ -291,7 +350,10 @@ bool Repositorio::apagarCodigo(int modeloId, const QString &comando)
     q.prepare("DELETE FROM codigos WHERE modelo_id = ? AND comando = ?");
     q.addBindValue(modeloId);
     q.addBindValue(comando);
-    return rodar(q) && q.numRowsAffected() > 0;
+    if (!rodar(q) || q.numRowsAffected() == 0) return false;
+
+    emit modelosAlterados();
+    return true;
 }
 
 QMap<QString, QString> Repositorio::codigosDoModelo(int modeloId) const
@@ -344,13 +406,19 @@ bool Repositorio::apagarUltimoCodigo(const QString &comando)
               "  SELECT MAX(modelo_id) FROM codigos WHERE comando = ?)");
     q.addBindValue(comando);
     q.addBindValue(comando);
-    return rodar(q) && q.numRowsAffected() > 0;
+    if (!rodar(q) || q.numRowsAffected() == 0) return false;
+
+    emit modelosAlterados();
+    return true;
 }
 
 bool Repositorio::apagarTodosCodigos()
 {
     // Os modelos continuam (podem estar ligados a salas); só os códigos saem.
-    return executar("DELETE FROM codigos");
+    if (!executar("DELETE FROM codigos")) return false;
+
+    emit modelosAlterados();
+    return true;
 }
 
 int Repositorio::contarCodigos(const QString &comando) const
@@ -436,7 +504,35 @@ bool Repositorio::definirModeloSala(int salaId, int modeloId)
     q.prepare("UPDATE salas SET modelo_id = ? WHERE id = ?");
     q.addBindValue(ouNulo(modeloId));
     q.addBindValue(salaId);
-    return rodar(q) && q.numRowsAffected() > 0;
+    if (!rodar(q) || q.numRowsAffected() == 0) return false;
+
+    emit modelosAlterados();
+    return true;
+}
+
+QVariantMap Repositorio::modeloDoDispositivo(const QString &idDispositivo)
+{
+    QVariantMap resultado;
+    resultado["id"] = -1;
+    resultado["nome"] = QString();
+
+    // Não cria sala só para consultar: placa sem sala = sem modelo.
+    int salaId = salaDoDispositivo(idDispositivo, false);
+    if (salaId < 0) return resultado;
+
+    int modeloId = sala(salaId).modeloId;
+    if (modeloId < 0) return resultado;
+
+    resultado["id"] = modeloId;
+    resultado["nome"] = modeloNome(modeloId);
+    return resultado;
+}
+
+bool Repositorio::definirModeloDoDispositivo(const QString &idDispositivo, int modeloId)
+{
+    int salaId = salaDoDispositivo(idDispositivo, true);
+    if (salaId < 0) return false;
+    return definirModeloSala(salaId, modeloId);
 }
 
 int Repositorio::salaDoDispositivo(const QString &idDispositivo, bool criar)

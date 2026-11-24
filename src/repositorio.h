@@ -7,6 +7,9 @@
 #include <QMap>
 #include <QJsonObject>
 #include <QSqlDatabase>
+#include <QStringList>
+#include <QVariantList>
+#include <QVariantMap>
 
 // =======================================================================
 // Único ponto de acesso aos dados da central (SQLite).
@@ -57,14 +60,26 @@ public:
     QString caminhoBanco() const { return caminho; }
 
     // --- Modelos -------------------------------------------------------
+    // As funções Q_INVOKABLE são chamadas direto pela tela de modelos (QML).
     QList<Modelo> modelos() const;
-    int criarModelo(const QString &nome, const QString &marca = QString());
-    bool renomearModelo(int modeloId, const QString &nome, const QString &marca);
-    bool apagarModelo(int modeloId);
+    Q_INVOKABLE int criarModelo(const QString &nome, const QString &marca = QString());  // -1 = nome vazio ou repetido
+    Q_INVOKABLE bool renomearModelo(int modeloId, const QString &nome, const QString &marca);
+    Q_INVOKABLE bool apagarModelo(int modeloId);
+
+    // Para o QML: [{id, nome, marca, formato, codigos, salas}, ...]
+    // "codigos" = quantos dos 17 comandos já foram capturados;
+    // "salas" = quantas salas usam o modelo.
+    Q_INVOKABLE QVariantList listarModelos() const;
+
+    // Para o QML: {"LIGAR": true, "DESLIGAR": false, "T16": ..., "T30": ...}
+    Q_INVOKABLE QVariantMap comandosDoModelo(int modeloId) const;
+
+    // Os 17 comandos, na ordem da tela: LIGAR, DESLIGAR, T16..T30.
+    static QStringList comandosValidos();
 
     // --- Códigos IR ----------------------------------------------------
     bool salvarCodigo(int modeloId, const QString &comando, const QString &dados);
-    bool apagarCodigo(int modeloId, const QString &comando);
+    Q_INVOKABLE bool apagarCodigo(int modeloId, const QString &comando);
     QMap<QString, QString> codigosDoModelo(int modeloId) const;   // comando -> dados
     bool codigoJaExiste(const QString &comando, const QString &dados) const;
 
@@ -82,6 +97,11 @@ public:
     Sala sala(int salaId) const;
     int salaPorNome(const QString &nome, bool criar = true);
     bool definirModeloSala(int salaId, int modeloId);              // modeloId -1 = nenhum
+
+    // Para o QML, que identifica a sala pelo nome da placa (model.name):
+    // {id, nome} do modelo da sala, ou {id: -1, nome: ""} se não houver.
+    Q_INVOKABLE QVariantMap modeloDoDispositivo(const QString &idDispositivo);
+    Q_INVOKABLE bool definirModeloDoDispositivo(const QString &idDispositivo, int modeloId);
 
     // Sala atendida por um dispositivo: pela placa vinculada ou, se não houver,
     // pela sala com o mesmo nome (hoje o Change_ID dá à placa o nome da sala).
@@ -117,6 +137,10 @@ public:
     static QString comandoFirmware(const QString &canonico);       // LIGAR -> "Ligar", T22 -> "22"
     static int diaParaNumero(const QString &dia);                  // "Seg" -> 1, -1 se inválido
     static QString diaParaTexto(int dia);                          // 1 -> "Seg"
+
+signals:
+    // Modelos, códigos ou o modelo de alguma sala mudaram: as telas recarregam.
+    void modelosAlterados();
 
 private:
     bool criarSchema();

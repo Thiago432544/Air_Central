@@ -27,12 +27,21 @@ public:
     Q_INVOKABLE QStringList list_ports();
 
 public slots:
+    // Tela antiga: grava no "próximo modelo" (comando no formato antigo, ex. "Ligar").
     void set_waited_command(QString commandType);
+
+    // Tela de modelos: o próximo código IR que chegar vai para este modelo e
+    // comando (formato do banco: LIGAR, DESLIGAR, T16..T30).
+    void set_waited_capture(int modeloId, QString comando);
+    void cancel_waited_capture();
 
 signals:
     void newDeviceDetected(QString idEsp);
     void statusUpdated(QString idEsp, QString status, int temp);
     void timeRequested();
+    // Um código IR foi gravado pela captura da tela de modelos.
+    void codigoCapturado(int modeloId, QString comando);
+    void capturaFalhou(QString motivo);
 
 private slots:
     void read_data();
@@ -42,6 +51,8 @@ private:
     QSerialPort *serialPort;
     QByteArray buffer;
     QString waitedCommand = "";
+    int modeloEsperado = -1;          // -1 = nenhuma captura da tela de modelos pendente
+    QString comandoEsperado;
 
     SaveData *saveData;
     Repositorio *repo;
