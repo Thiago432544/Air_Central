@@ -18,9 +18,31 @@ void mensagemRecebidaDaMesh(uint32_t from, String &msg) {
   // Tudo o que vem da malha continua indo para a central, sem filtro.
   Serial.println(msg);
 
-  // TODO(tarefa 1): quando a mensagem for um "Resposta_ID", guardar em
-  // tabelaRotas o par (id da mensagem -> from). O "from" é o nodeId de quem
-  // mandou, que é o endereço que o sendSingle precisa.
+  // TODO(tarefa 1): aprender o endereço (nodeId) de cada sala.
+  StaticJsonDocument<256> filtro;
+  filtro["command"] = true;
+  filtro["id"] = true;
+
+  StaticJsonDocument<256> doc;
+  DeserializationError erro =
+      deserializeJson(doc, msg, DeserializationOption::Filter(filtro));
+  if (erro) return;
+
+  String comando = doc["command"].as<String>();
+  if (comando == "Resposta_ID") {
+    String id = doc["id"].as<String>();
+
+    // Placa que mudou de nome: apaga entradas antigas com o mesmo nodeId.
+    for (auto it = tabelaRotas.begin(); it != tabelaRotas.end();) {
+      if (it->second == from) {
+        it = tabelaRotas.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
+    tabelaRotas[id] = from;
+  }
 }
 
 // =======================================================================
@@ -28,10 +50,18 @@ void mensagemRecebidaDaMesh(uint32_t from, String &msg) {
 // =======================================================================
 // "destino" é o campo "id" da mensagem (a sala de destino). Vazio = broadcast.
 void encaminharParaMalha(const String &mensagem, const String &destino) {
-  // TODO(tarefa 1): se o destino estiver em tabelaRotas, mandar só para ele
-  // com mesh.sendSingle(nodeId, mensagem) em vez de inundar a malha. Se não
-  // estiver (ou se o envio falhar), cair no broadcast abaixo.
-  (void) destino;
+   // Sem destino (ex.: Require_IDs, Sync_Time): vai para todos.
+  if (destino.length() > 0) {
+    auto it = tabelaRotas.find(destino);
+    if (it != tabelaRotas.end()) {
+      // Sala conhecida: envia só para o nodeId dela.
+      if (mesh.sendSingle(it->second, mensagem)) {
+        return;
+      }
+      // Falhou (placa caiu?): esquece a rota e cai no broadcast.
+      tabelaRotas.erase(it);
+    }
+  }
   mesh.sendBroadcast(mensagem);
 }
 
